@@ -27,6 +27,8 @@ A Swift-based library for composable logging, built on [swift-log](https://githu
 A template that defines the shape of a log line — configure it once and it applies to every event.
 
 ```swift
+import Lily
+
 let formatter = LogFormatter([
     .timestamp,
     " ",
