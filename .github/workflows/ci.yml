@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: &shared_paths
+      - "**.swift"
+      - "Makefile"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main]
+    paths: *shared_paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-ci
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  macos-test:
+    name: macOS (Xcode ${{ matrix.xcode-version }})
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            xcode-version: '26.3' # swift 6.2.4
+          # - os: macos-26
+          #   xcode-version: '26.6' # swift 6.3.3
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Xcode
+        id: setup-xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ matrix.xcode-version }}
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache Swift packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            .build
+          key: ${{ runner.os }}-spm-${{ steps.setup-xcode.outputs.version }}-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-${{ steps.setup-xcode.outputs.version }}-
+            ${{ runner.os }}-spm-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Check Formatting
+        run: make lint
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Check upstream
+        run: make check-upstream
+
+      - name: Run Tests
+        run: make test-coverage
+
+      # - name: Show coverage
+      #   id: coverage
+      #   run: |
+      #     COVERAGE_PATH="$(swift test --show-codecov-path)"
+      #     CODECOV_DIR="$(dirname "$COVERAGE_PATH")"
+
+      #     BIN_PATH="$(swift build --show-bin-path)"
+      #     TEST_BINARY="$(find "${BIN_PATH}" -type f -name '*PackageTests' -not -path '*.dSYM*' | head -n 1)"
+
+      #     xcrun llvm-cov export "$TEST_BINARY" \
+      #       --instr-profile "$CODECOV_DIR/default.profdata" \
+      #       -format=lcov \
+      #       --sources Sources/ > coverage.lcov
+
+      #     echo "path=coverage.lcov" >> "$GITHUB_OUTPUT"
+
+      # - name: Upload coverage report
+      #   if: always()
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      #   with:
+      #     name: coverage-report
+      #     path: ${{ steps.coverage.outputs.path }}
+      #     retention-days: 14
+
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      #   with:
+      #     files: ${{ steps.coverage.outputs.path }}
+      #     name: lily
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     verbose: true
+
+      - name: Build release
+        run: make release
+
+  linux-test:
+    name: Linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.1", "6.2", "6.3"] # "6.4-snapshot"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: ${{ matrix.swift }}
+          skip-verify-signature: true
+
+      - name: Cache Swift packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            .build
+          key: ${{ runner.os }}-swift-${{ matrix.swift }}-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-${{ matrix.swift }}-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: false
+
+      - name: Check Formatting
+        run: make lint
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Check upstream
+        run: make check-upstream
+
+      - name: Run Build and Tests
+        run: make test
+
+      - name: Build release
+        run: make release

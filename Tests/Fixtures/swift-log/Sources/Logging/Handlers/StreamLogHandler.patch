@@ -1,0 +1,395 @@
+--- Tests/Fixtures/swift-log/Sources/Logging/Handlers/StreamLogHandler.swift
++++ Sources/Lily/Handlers/StreamLogHandler.swift
+@@ -1,16 +1,19 @@
+-//===----------------------------------------------------------------------===//
+ //
+ // This source file is part of the Swift Logging API open source project
+-//
+ // Copyright (c) 2018-2019 Apple Inc. and the Swift Logging API project authors
+-// Licensed under Apache License v2.0
+ //
+ // See LICENSE.txt for license information
+-// See CONTRIBUTORS.txt for the list of Swift Logging API project authors
+-//
+ // SPDX-License-Identifier: Apache-2.0
+ //
+-//===----------------------------------------------------------------------===//
++//
++// This source file is part of the Lily open source project
++// Modifications copyright (c) 2026 STACiA and the Lily project authors
++//
++// See LICENSE for license information
++// SPDX-License-Identifier: Apache-2.0
++//
++
++import Logging
+ 
+ #if canImport(Darwin)
+ import Darwin
+@@ -30,46 +33,47 @@
+ 
+ /// Stream log handler presents log messages to STDERR or STDOUT.
+ ///
+-/// This is a simple implementation of `LogHandler` that directs
+-/// `Logger` output to either `stderr` or `stdout` via the factory methods.
++/// This is a Lily implementation of `LogHandler` that directs `Logger`
++/// output to either `stderr` or `stdout` via the factory methods, rendering
++/// each event through a ``LogFormatting`` formatter after running the configured
++/// filter chain.
+ ///
+ /// Metadata is merged in the following order:
+ /// 1. Metadata set on the log handler itself is used as the base metadata.
+ /// 2. The handler's ``metadataProvider`` is invoked, overriding any existing keys.
+ /// 3. The per-log-statement metadata is merged, overriding any previously set keys.
+-public struct StreamLogHandler: LogHandler {
+-    internal typealias _SendableTextOutputStream = TextOutputStream & Sendable
+-
+-    /// Creates a stream log handler that directs its output to STDOUT.
+-    public static func standardOutput(label: String) -> StreamLogHandler {
+-        StreamLogHandler(
+-            label: label,
+-            stream: StdioOutputStream.stdout,
+-            metadataProvider: LoggingSystem.metadataProvider
+-        )
+-    }
+-
+-    /// Creates a stream log handler that directs its output to STDOUT using the metadata provider you provide.
+-    public static func standardOutput(label: String, metadataProvider: Logger.MetadataProvider?) -> StreamLogHandler {
+-        StreamLogHandler(label: label, stream: StdioOutputStream.stdout, metadataProvider: metadataProvider)
+-    }
+-
+-    /// Creates a stream log handler that directs its output to STDERR.
+-    public static func standardError(label: String) -> StreamLogHandler {
+-        StreamLogHandler(
+-            label: label,
+-            stream: StdioOutputStream.stderr,
+-            metadataProvider: LoggingSystem.metadataProvider
+-        )
+-    }
+-
+-    /// Creates a stream log handler that directs its output to STDERR using the metadata provider you provide.
+-    public static func standardError(label: String, metadataProvider: Logger.MetadataProvider?) -> StreamLogHandler {
+-        StreamLogHandler(label: label, stream: StdioOutputStream.stderr, metadataProvider: metadataProvider)
+-    }
+-
+-    private let stream: any _SendableTextOutputStream
+-    private let label: String
++///
++/// When both `Logging` and `Lily` are imported, use the fully qualified
++/// `Lily.StreamLogHandler` to disambiguate from `Logging.StreamLogHandler`.
++public struct StreamLogHandler: Logging.LogHandler {
++
++    /// Controls whether a stream handler applies ANSI color.
++    public enum ColorMode: Sendable {
++        /// Always apply ANSI color escape sequences.
++        case always
++        /// Never apply ANSI color escape sequences.
++        case never
++        /// Detect color support from the destination stream.
++        case auto
++    }
++
++    /// The line terminator appended to each rendered log message.
++    private static let terminator = "\n"
++
++    /// The formatter used when `formatter` is `nil`, resolved once for the
++    /// whole process rather than on every handler instance.
++    private static let defaultFormatter: any LogFormatting = LogFormatter.standard
++
++    /// The formatter used to render log events.
++    ///
++    /// When `nil`, the handler falls back to ``LogFormatter/standard``.
++    public var formatter: (any LogFormatting)?
++
++    /// The filters applied before emitting events.
++    public private(set) var filters: [any LogFiltering]
++
++    /// Controls whether this handler applies ANSI color.
++    public let colorMode: ColorMode
+ 
+     /// Get the log level configured for this `Logger`.
+     ///
+@@ -82,12 +86,159 @@
+     /// The metadata provider.
+     public var metadataProvider: Logger.MetadataProvider?
+ 
+-    private var prettyMetadata: String?
+     /// Get or set the entire metadata storage as a dictionary.
+-    public var metadata = Logger.Metadata() {
+-        didSet {
+-            self.prettyMetadata = self.prettify(self.metadata)
+-        }
++    public var metadata = Logger.Metadata()
++
++    /// The label identifying the logger instance.
++    private let label: String
++
++    /// The text output stream destination.
++    private let stream: any TextOutputStream & Sendable
++
++    /// Indicates whether the target stream supports color output.
++    private let streamSupportsColor: Bool
++
++    /// Resolves whether ANSI color formatting should be enabled based on `colorMode`.
++    private var supportsColor: Bool {
++        switch self.colorMode {
++        case .always: true
++        case .never: false
++        case .auto: streamSupportsColor
++        }
++    }
++
++    /// The resolved non-nil log formatter instance.
++    private var resolvedFormatter: any LogFormatting {
++        self.formatter ?? Self.defaultFormatter
++    }
++
++    /// Creates a stream handler that directs its output to STDOUT.
++    ///
++    /// - Parameters:
++    ///   - label: The label identifying the logger.
++    ///   - metadataProvider: The provider to use for metadata defaults.
++    ///   - formatter: The log formatter to use.
++    ///   - filters: The list of filters to apply.
++    ///   - colorMode: The color mode to use.
++    /// - Returns: A configured stream log handler writing to standard output.
++    public static func standardOutput(
++        label: String,
++        metadataProvider: Logger.MetadataProvider? = nil,
++        formatter: (any LogFormatting)? = nil,
++        filters: [any LogFiltering] = [],
++        colorMode: ColorMode = .auto
++    ) -> Self {
++        StreamLogHandler(
++            label: label,
++            stream: StdioOutputStream.stdout,
++            metadataProvider: metadataProvider,
++            formatter: formatter,
++            filters: filters,
++            colorMode: colorMode,
++            streamSupportsColor: ColorSupport.stdout
++        )
++    }
++
++    /// Creates a stream handler that directs its output to STDERR.
++    ///
++    /// - Parameters:
++    ///   - label: The label identifying the logger.
++    ///   - metadataProvider: The provider to use for metadata defaults.
++    ///   - formatter: The log formatter to use.
++    ///   - filters: The list of filters to apply.
++    ///   - colorMode: The color mode to use.
++    /// - Returns: A configured stream log handler writing to standard error.
++    public static func standardError(
++        label: String,
++        metadataProvider: Logger.MetadataProvider? = nil,
++        formatter: (any LogFormatting)? = nil,
++        filters: [any LogFiltering] = [],
++        colorMode: ColorMode = .auto
++    ) -> Self {
++        StreamLogHandler(
++            label: label,
++            stream: StdioOutputStream.stderr,
++            metadataProvider: metadataProvider,
++            formatter: formatter,
++            filters: filters,
++            colorMode: colorMode,
++            streamSupportsColor: ColorSupport.stderr
++        )
++    }
++
++    /// Creates a stream log handler writing to a custom text output stream.
++    ///
++    /// - Parameters:
++    ///   - label: The label identifying the logger.
++    ///   - stream: The text output stream where formatted log output will be written.
++    ///   - metadataProvider: The provider to use for metadata defaults.
++    ///   - formatter: The log formatter to use. When `nil`, defaults to ``LogFormatter/standard``.
++    ///   - filters: The list of filters to apply before emitting events.
++    ///   - colorMode: The color mode controlling ANSI escape sequences.
++    ///   - streamSupportsColor: Indicates whether the output stream supports color formatting when `colorMode` is `.auto`.
++    public init(
++        label: String,
++        stream: any TextOutputStream & Sendable,
++        metadataProvider: Logger.MetadataProvider? = LoggingSystem.metadataProvider,
++        formatter: (any LogFormatting)? = nil,
++        filters: [any LogFiltering] = [],
++        colorMode: ColorMode = .auto,
++        streamSupportsColor: Bool = false
++    ) {
++        self.label = label
++        self.stream = stream
++        self.metadataProvider = metadataProvider
++        self.formatter = formatter
++        self.filters = filters
++        self.colorMode = colorMode
++        self.streamSupportsColor = streamSupportsColor
++    }
++
++    /// Appends the filter to the chain, unless one with the same ``LogFiltering/name``
++    /// is already present.
++    ///
++    /// - Parameter filter: The filter to add to the handler's chain.
++    /// - Returns: `true` if the filter was appended, `false` if a filter with the
++    ///   same `name` already existed and this call was a no-op.
++    @discardableResult
++    public mutating func addFilter(_ filter: any LogFiltering) -> Bool {
++        guard !self.filters.contains(where: { $0.name == filter.name }) else {
++            return false
++        }
++        self.filters.append(filter)
++        return true
++    }
++
++    /// Removes the first filter whose ``LogFiltering/name`` matches the given
++    /// filter's `name`.
++    ///
++    /// Matching is by `name`, not by instance identity, so this can remove a
++    /// *different* filter that shares the same `name`.
++    ///
++    /// - Parameter filter: The filter whose `name` identifies the entry to remove.
++    public mutating func removeFilter(_ filter: any LogFiltering) {
++        if let index = self.filters.firstIndex(where: { $0.name == filter.name }) {
++            self.filters.remove(at: index)
++        }
++    }
++
++    /// Filters the given log event through the handler's filter chain.
++    ///
++    /// The event is passed sequentially through each filter in ``filters`` in
++    /// insertion order. If any filter returns `nil`, the event is immediately
++    /// dropped and this method returns `nil`. Otherwise, the (potentially modified)
++    /// event is passed to the next filter.
++    ///
++    /// - Parameter event: The log event to filter.
++    /// - Returns: The final filtered log event, or `nil` if the event is dropped.
++    public func filter(_ event: LogEvent) -> LogEvent? {
++        guard !self.filters.isEmpty else { return event }
++        var event = event
++        for filter in self.filters {
++            guard let result = filter.filter(event) else { return nil }
++            event = result
++        }
++        return event
+     }
+ 
+     /// Add, change, or remove a logging metadata item.
+@@ -102,41 +253,42 @@
+         }
+     }
+ 
+-    // internal for testing only
+-    internal init(label: String, stream: any _SendableTextOutputStream) {
+-        self.init(label: label, stream: stream, metadataProvider: LoggingSystem.metadataProvider)
+-    }
+-
+-    // internal for testing only
+-    internal init(label: String, stream: any _SendableTextOutputStream, metadataProvider: Logger.MetadataProvider?) {
+-        self.label = label
+-        self.stream = stream
+-        self.metadataProvider = metadataProvider
+-    }
+-
+     /// Log a message using the log level and source that you provide.
++    ///
++    /// The event is first passed through the configured ``filters``. If any filter
++    /// drops it, the handler returns without writing. The surviving event is then
++    /// rendered by the selected formatter and written to the stream once.
+     ///
+     /// - parameters:
+     ///    - event: The log event containing the level, message, metadata, and source location.
+     public func log(event: LogEvent) {
++        guard var filteredEvent = self.filter(event) else { return }
++
+         let effectiveMetadata = StreamLogHandler.prepareMetadata(
+             base: self.metadata,
+             provider: self.metadataProvider,
+-            explicit: event.metadata,
+-            error: event.error,
+-        )
+-
+-        let prettyMetadata: String?
+-        if let effectiveMetadata = effectiveMetadata {
+-            prettyMetadata = self.prettify(effectiveMetadata)
+-        } else {
+-            prettyMetadata = self.prettyMetadata
+-        }
+-
+-        var stream = self.stream
+-        stream.write(
+-            "\(self.timestamp()) \(event.level)\(self.label.isEmpty ? "" : " ")\(self.label):\(prettyMetadata.map { " \($0)" } ?? "") [\(event.source)] \(event.message)\n"
+-        )
++            explicit: filteredEvent.metadata,
++            error: filteredEvent.error
++        )
++        filteredEvent.metadata = effectiveMetadata ?? (self.metadata.isEmpty ? nil : self.metadata)
++
++        let formatter = self.resolvedFormatter
++        let timestamp = self.timestamp(format: formatter.dateFormat.rawValue)
++        let context = LogFormattingContext(
++            formatter: formatter,
++            label: self.label,
++            event: filteredEvent,
++            timestamp: timestamp,
++            supportsColor: self.supportsColor
++        )
++
++        do {
++            let output = try formatter.format(context)
++            var stream = self.stream
++            stream.write(output + Self.terminator)
++        } catch {
++            return
++        }
+     }
+ 
+     @available(*, deprecated, renamed: "log(event:)")
+@@ -166,7 +318,7 @@
+         base: Logger.Metadata,
+         provider: Logger.MetadataProvider?,
+         explicit: Logger.Metadata?,
+-        error: (any Error)?,
++        error: (any Error)?
+     ) -> Logger.Metadata? {
+         var metadata = base
+ 
+@@ -193,15 +345,7 @@
+         return metadata
+     }
+ 
+-    private func prettify(_ metadata: Logger.Metadata) -> String? {
+-        if metadata.isEmpty {
+-            return nil
+-        } else {
+-            return metadata.lazy.sorted(by: { $0.key < $1.key }).map { "\($0)=\($1)" }.joined(separator: " ")
+-        }
+-    }
+-
+-    private func timestamp() -> String {
++    private func timestamp(format: String) -> String {
+         var buffer = [Int8](repeating: 0, count: 255)
+         #if os(Windows)
+         var timestamp = __time64_t()
+@@ -210,13 +354,13 @@
+         var localTime = tm()
+         _ = _localtime64_s(&localTime, &timestamp)
+ 
+-        _ = strftime(&buffer, buffer.count, "%Y-%m-%dT%H:%M:%S%z", &localTime)
++        _ = strftime(&buffer, buffer.count, format, &localTime)
+         #else
+         var timestamp = time(nil)
+         guard let localTime = localtime(&timestamp) else {
+             return "<unknown>"
+         }
+-        strftime(&buffer, buffer.count, "%Y-%m-%dT%H:%M:%S%z", localTime)
++        strftime(&buffer, buffer.count, format, localTime)
+         #endif
+         return buffer.withUnsafeBufferPointer {
+             $0.withMemoryRebound(to: CChar.self) {
+@@ -427,3 +571,6 @@
+         case always
+     }
+ }
++
++/// Typealias providing top-level access to ``StreamLogHandler/ColorMode``.
++public typealias ColorMode = StreamLogHandler.ColorMode

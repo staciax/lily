@@ -1,0 +1,33 @@
+{
+  "read_only_files": [
+    "**/Package.resolved",
+    "**/.build/**",
+    "**/Tests/Fixtures/**",
+  ],
+  "file_types": {
+    "JSON": ["**/.swift-format*"],
+  },
+  "enable_language_server": false,
+  "languages": {
+    "Swift": {
+      "enable_language_server": true,
+      "language_servers": ["sourcekit-lsp", "package-version-server"],
+      "formatter": "language_server",
+    },
+    "YAML": {
+      "language_servers": ["yaml-language-server"],
+      "enable_language_server": true,
+    },
+    "Markdown": {
+      "soft_wrap": "none",
+    },
+    "JSON": {
+      "language_servers": ["json-language-server"],
+      "enable_language_server": true,
+    },
+    "JSONC": {
+      "language_servers": ["json-language-server"],
+      "enable_language_server": true,
+    },
+  },
+}
