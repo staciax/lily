@@ -172,6 +172,7 @@ public struct LogFormatter: LogFormatting {
 
         case .group(let components):
             var output = ""
+            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
             for component in components {
                 output += try format(component, context: context)
             }
@@ -179,6 +180,7 @@ public struct LogFormatter: LogFormatting {
 
         case .joined(let components, let separator):
             var output = ""
+            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
             var needsSeparator = false
             for component in components {
                 let rendered = try format(component, context: context)
@@ -192,6 +194,7 @@ public struct LogFormatter: LogFormatting {
         case .when(let predicate, let components):
             guard predicate(context) else { return "" }
             var output = ""
+            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
             for component in components {
                 output += try format(component, context: context)
             }
