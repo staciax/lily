@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env -S uv run --python 3.14 --script
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
@@ -6,22 +6,6 @@
 #     "wcwidth",
 # ]
 # ///
-"""
-Convergence benchmark comparison for the Lily Swift package.
-
-Run directly (uv reads the PEP 723 header above and provisions a
-Python interpreter automatically):
-
-    ./benchmark.py
-    ./benchmark.py --main /path/to/lily-pre-main
-    ./benchmark.py --sync
-    ./benchmark.py --cleanup
-
-Or explicitly:
-
-    uv run benchmark.py
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -72,13 +56,13 @@ class BenchmarkData:
 @dataclass
 class BenchmarkResult:
     main: BenchmarkData
-    pull_request: BenchmarkData
+    pr: BenchmarkData
 
 
 @dataclass
 class BenchmarkContext:
     main_dir: Path
-    pull_request_dir: Path
+    pr_dir: Path
     swift_path: str
     benchmark_filter: str
     runs: int
@@ -160,14 +144,17 @@ def render_markdown_table(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark comparison for Lily", suggest_on_error=True)
+    parser = argparse.ArgumentParser(
+        description="Benchmark comparison for Lily",
+        suggest_on_error=True
+    )
     parser.add_argument("--main", type=Path, default=None, help="Path to main branch checkout (auto-clones if omitted)")
     parser.add_argument("--pr", type=Path, default=Path.cwd(), help="Path to PR branch checkout")
     parser.add_argument("--branch", default="main", help="Branch to clone if --main omitted")
     parser.add_argument("--runs", type=int, default=int(os.environ.get("BENCH_RUNS", "10")), help="Benchmark runs per state")
     parser.add_argument("--filter", default="", help="Benchmark filter string")
-    parser.add_argument("--sync", action="store_true", help="Sync Benchmarks/ from PR to main before running (default: skip)")
-    parser.add_argument("--cleanup", action="store_true", help="Delete cloned main after run")
+    parser.add_argument("--sync", action=argparse.BooleanOptionalAction, help="Sync Benchmarks/ from PR to main before running (default: skip)")
+    parser.add_argument("--cleanup", action=argparse.BooleanOptionalAction, help="Delete cloned main after run")
     parser.add_argument("--report", type=Path, default=None, help="Output report file path (prints to stdout if omitted)")
     parser.add_argument("--swift", default=None, help="Path to swift binary (auto-detected if omitted)")
     parser.add_argument("--repo-url", default=REPO_URL, help="Git repo URL for cloning main")
@@ -208,7 +195,7 @@ def sync_benchmarks(pr_dir: Path, main_dir: Path, *, sync: bool = False) -> None
 
     if not sync:
         if main_bench.exists() and _benchmarks_differ(pr_bench, main_bench):
-            print("WARNING: Benchmarks/ differ between PR and main — results may not be comparable")
+            print("WARNING: Benchmarks/ differ between PR and main — results may not be comparable", file=sys.stderr)
         return
 
     if main_bench.exists():
@@ -299,10 +286,10 @@ def compute_statistics(runs_data: list[list[dict]]) -> dict[str, dict[str, float
         return dict(pool.map(lambda kv: _stats_for_metric(*kv), metrics_map.items()))
 
 
-def delta_percent(main_value: float, pull_request_value: float) -> str:
+def delta_percent(main_value: float, pr_value: float) -> str:
     if main_value == 0:
         return "n/a"
-    return f"{((pull_request_value - main_value) / main_value) * 100:+.2f}%"
+    return f"{((pr_value - main_value) / main_value) * 100:+.2f}%"
 
 
 def format_value(value: float, metric_type: str) -> str:
@@ -319,18 +306,18 @@ def format_value(value: float, metric_type: str) -> str:
     return f"{int(round(value)):,}" if value >= 10 else f"{value:.2f}"
 
 
-def build_summary_table(main_stats: dict[str, dict], pull_request_stats: dict[str, dict]) -> str:
-    all_keys = set(main_stats.keys()) & set(pull_request_stats.keys())
+def build_summary_table(main_stats: dict[str, dict], pr_stats: dict[str, dict]) -> str:
+    all_keys = set(main_stats.keys()) & set(pr_stats.keys())
     targets = sorted(set(k.split(" - ")[0] for k in all_keys))
 
-    headers = ["Target", "main", "pull_request", "Delta"]
+    headers = ["Target", "main", "pr", "Delta"]
     align = [Alignment.left, Alignment.right, Alignment.right, Alignment.right]
 
     # Throughput
     tp_rows = []
     for t in targets:
         tp_main = main_stats.get(f"{t} - Throughput (ops/s)", {}).get("median", 0)
-        tp_pr = pull_request_stats.get(f"{t} - Throughput (ops/s)", {}).get("median", 0)
+        tp_pr = pr_stats.get(f"{t} - Throughput (ops/s)", {}).get("median", 0)
         tp_rows.append([
             f"{t}",
             format_value(tp_main, "Throughput (ops/s)"),
@@ -343,7 +330,7 @@ def build_summary_table(main_stats: dict[str, dict], pull_request_stats: dict[st
     m_rows = []
     for t in targets:
         m_main = main_stats.get(f"{t} - Malloc (total)", {}).get("median", 0)
-        m_pr = pull_request_stats.get(f"{t} - Malloc (total)", {}).get("median", 0)
+        m_pr = pr_stats.get(f"{t} - Malloc (total)", {}).get("median", 0)
         m_rows.append([
             f"{t}",
             format_value(m_main, "Malloc (total)"),
@@ -356,7 +343,7 @@ def build_summary_table(main_stats: dict[str, dict], pull_request_stats: dict[st
     inst_rows = []
     for t in targets:
         i_main = main_stats.get(f"{t} - Instructions", {}).get("median", 0)
-        i_pr = pull_request_stats.get(f"{t} - Instructions", {}).get("median", 0)
+        i_pr = pr_stats.get(f"{t} - Instructions", {}).get("median", 0)
         inst_rows.append([
             f"{t}",
             format_value(i_main, "Instructions"),
@@ -371,13 +358,13 @@ def build_summary_table(main_stats: dict[str, dict], pull_request_stats: dict[st
 def format_report(context: BenchmarkContext, result: BenchmarkResult, *, file_output: bool) -> str:
     raw_dataset = {
         "main_dir": str(context.main_dir),
-        "pull_request_dir": str(context.pull_request_dir),
+        "pr_dir": str(context.pr_dir),
         "benchmark_filter": context.benchmark_filter,
         "runs_per_state": context.runs,
-        "pull_request": {f"run{i + 1}": result.pull_request.runs[i] for i in range(context.runs)},
+        "pr": {f"run{i + 1}": result.pr.runs[i] for i in range(context.runs)},
         "main": {f"run{i + 1}": result.main.runs[i] for i in range(context.runs)},
     }
-    summary_table = build_summary_table(result.main.stats, result.pull_request.stats)
+    summary_table = build_summary_table(result.main.stats, result.pr.stats)
 
     details_section = ""
     if file_output:
@@ -394,7 +381,7 @@ def format_report(context: BenchmarkContext, result: BenchmarkResult, *, file_ou
 
 ### PR
 ```json
-{json.dumps({k: {m: v for m, v in val.items() if m != 'values'} for k, val in result.pull_request.stats.items()}, indent=2)}
+{json.dumps({k: {m: v for m, v in val.items() if m != 'values'} for k, val in result.pr.stats.items()}, indent=2)}
 ```
 
 </details>
@@ -416,7 +403,7 @@ def format_report(context: BenchmarkContext, result: BenchmarkResult, *, file_ou
 | | |
 |---|---|
 | Main | `{context.main_dir}` |
-| PR | `{context.pull_request_dir}` |
+| PR | `{context.pr_dir}` |
 | Filter | `{context.benchmark_filter or 'None'}` |
 | Runs | `{context.runs}` |
 | Command | `ENABLE_LILY_BENCHMARKS=1 {context.swift_path} package --disable-sandbox benchmark {benchmark_flags_str(context.benchmark_filter)}` |
@@ -430,14 +417,19 @@ def format_report(context: BenchmarkContext, result: BenchmarkResult, *, file_ou
 {details_section}"""
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
     if args.swift:
         swift_path = str(args.swift)
         if not Path(swift_path).is_file():
-            raise FileNotFoundError(f"swift not found at: {swift_path}")
+            print(f"Error: swift not found at: {swift_path}", file=sys.stderr)
+            return 1
     else:
-        swift_path = find_binary("swift")
+        try:
+            swift_path = find_binary("swift")
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     # Resolve main directory
     cloned = False
@@ -451,11 +443,11 @@ def main() -> None:
             main_dir = clone_main(args.branch, args.repo_url)
             cloned = True
 
-        pull_request_dir = args.pr.resolve()
+        pr_dir = args.pr.resolve()
 
         context = BenchmarkContext(
             main_dir=main_dir,
-            pull_request_dir=pull_request_dir,
+            pr_dir=pr_dir,
             swift_path=swift_path,
             benchmark_filter=args.filter,
             runs=args.runs,
@@ -464,32 +456,34 @@ def main() -> None:
 
         print(f"benchmark: {context.runs} runs")
         print(f"main: {context.main_dir}")
-        print(f"pr: {context.pull_request_dir}")
+        print(f"pr: {context.pr_dir}")
         print(f"filter: {context.benchmark_filter or 'None'}")
         print(f"python: {sys.version_info.major}.{sys.version_info.minor}")
         swift_ver = run_binary("swift", ["--version"]).stdout.splitlines()[0] if swift_path else "unknown"
         print(f"swift: {context.swift_path} ({swift_ver})")
 
-        sync_benchmarks(context.pull_request_dir, context.main_dir, sync=args.sync)
+        sync_benchmarks(context.pr_dir, context.main_dir, sync=args.sync)
 
         if not context.main_dir.exists():
-            raise RuntimeError(f"Main directory not found: {context.main_dir}")
-        if not context.pull_request_dir.exists():
-            raise RuntimeError(f"Pull request directory not found: {context.pull_request_dir}")
+            print(f"Error: Main directory not found: {context.main_dir}", file=sys.stderr)
+            return 1
+        if not context.pr_dir.exists():
+            print(f"Error: PR directory not found: {context.pr_dir}", file=sys.stderr)
+            return 1
 
         print("\nphase 1: main")
         main_runs = collect_runs("main", context.main_dir, context)
 
         print("\nphase 2: pr")
-        pull_request_runs = collect_runs("pull_request", context.pull_request_dir, context)
+        pr_runs = collect_runs("pr", context.pr_dir, context)
 
         print("\nphase 3: stats + report")
         main_stats = compute_statistics(main_runs)
-        pull_request_stats = compute_statistics(pull_request_runs)
+        pr_stats = compute_statistics(pr_runs)
 
         result = BenchmarkResult(
             main=BenchmarkData(runs=main_runs, stats=main_stats),
-            pull_request=BenchmarkData(runs=pull_request_runs, stats=pull_request_stats),
+            pr=BenchmarkData(runs=pr_runs, stats=pr_stats),
         )
         if context.report_path is not None:
             report = format_report(context, result, file_output=True)
@@ -509,8 +503,10 @@ def main() -> None:
         print("\nInterrupted.", file=sys.stderr)
         if cloned:
             shutil.rmtree(main_dir.parent, ignore_errors=True)
-        sys.exit(130)
+        return 130
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

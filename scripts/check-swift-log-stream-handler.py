@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --python 3.14t --script
+#!/usr/bin/env -S uv run --python 3.14 --script
 # /// script
 # requires-python = ">=3.14"
 # dependencies = []
@@ -63,10 +63,6 @@ def display_path(root: Path, path: PurePath) -> str:
         return str(path)
 
 
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
 def unified_diff(root: Path, old_path: PurePath, old: str, new_path: PurePath, new: str) -> str:
     return "".join(
         difflib.unified_diff(
@@ -120,7 +116,7 @@ def _colorize_diff(diff_text: str, *, color: bool) -> str:
 
 
 def pinned_swift_log_revision(package_resolved: Path) -> str:
-    data = json.loads(read_text(package_resolved))
+    data = json.loads(package_resolved.read_text(encoding="utf-8"))
 
     for pin in data.get("pins", []):
         if pin.get("identity") == "swift-log":
@@ -150,7 +146,7 @@ def check_tracked_file(root: Path, tracked: TrackedFile, revision: str, *, color
         print(f"missing required path: {display_path(root, snapshot)}", file=sys.stderr)
         return True
 
-    snapshot_text = read_text(snapshot)
+    snapshot_text = snapshot.read_text(encoding="utf-8")
 
     url = upstream_url(revision, tracked.upstream_relative)
     try:
@@ -182,8 +178,8 @@ def check_tracked_file(root: Path, tracked: TrackedFile, revision: str, *, color
                 print(f"missing required path: {display_path(root, path)}", file=sys.stderr)
                 return True
 
-        local_text = read_text(local)
-        expected_patch_text = read_text(expected_patch)
+        local_text = local.read_text(encoding="utf-8")
+        expected_patch_text = expected_patch.read_text(encoding="utf-8")
         actual_patch_text = unified_diff(root, snapshot, snapshot_text, local, local_text)
 
         if actual_patch_text != expected_patch_text:
@@ -208,12 +204,9 @@ def check_tracked_file(root: Path, tracked: TrackedFile, revision: str, *, color
 
     return failed
 
-
-def main() -> int:
-    root = Path(__file__).resolve().parents[1]
-
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        color=True,
+        description="Check swift-log StreamLogHandler sync status",
         suggest_on_error=True,
     )
     parser.add_argument("--package-resolved", type=Path, default=Path("Package.resolved"))
@@ -230,8 +223,13 @@ def main() -> int:
         default=False,
         help="automatically update expected patch files from current local files",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main() -> int:
+    args = parse_args()
+
+    root = Path(__file__).resolve().parents[1]
     package_resolved = repo_path(root, args.package_resolved)
     if not package_resolved.is_file():
         print(f"missing required path: {display_path(root, package_resolved)}", file=sys.stderr)
