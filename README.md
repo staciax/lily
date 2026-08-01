@@ -39,7 +39,7 @@ let formatter = LogFormatter([
     "[", .source, "]",
     " ",
     .message,
-    .when({ $0.event.metadata?.isEmpty == false }, then: [": ", .metadata]),
+    .when({ $0.event.metadata?.isEmpty != true }, then: [": ", .metadata]),
 ])
 
 StreamLogHandler.standardOutput(label: label, formatter: formatter)
@@ -129,7 +129,7 @@ let formatter = LogFormatter([
     " ",
     .group(["[", .source, "]"]),
     " ",
-    .when({ $0.event.metadata?.isEmpty == false }, then: [": ", .metadata]),
+    .when({ $0.event.metadata?.isEmpty != true }, then: [": ", .metadata]),
 ])
 
 StreamLogHandler.standardOutput(label: label, formatter: formatter)
