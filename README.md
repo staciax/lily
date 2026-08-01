@@ -32,15 +32,13 @@ import Lily
 let formatter = LogFormatter([
     .timestamp,
     " ",
-    .level {
-        render, _ in
-        render().padding(toLength: 8, withPad: " ", startingAt: 0)
-    },
-    .when({ !$0.label.isEmpty }, then: [" ", .label]),
+    .level { r, _ in r().padding(toLength: 8, withPad: " ", startingAt: 0) },
+    " ",
+    .label,
+    " ",
+    "[", .source, "]",
     " ",
     .message,
-    " ",
-    .group(["[", .source, "]"]),
     .when({ $0.event.metadata?.isEmpty == false }, then: [": ", .metadata]),
 ])
 
@@ -48,11 +46,21 @@ StreamLogHandler.standardOutput(label: label, formatter: formatter)
 ```
 
 ```log
-2026-07-29T01:35:23+0700 info     lily Compiling Lily with 47 files [LilyDemo]: target=Lily
-2026-07-29T01:35:23+0700 warning  lily Value 'temp' never mutated, use 'let' [LilyDemo]
-2026-07-29T01:35:23+0700 error    lily No such module 'MissingDependency' [LilyDemo]: module=MissingDependency
-2026-07-29T01:35:23+0700 critical lily Segfault at 0x7ffeebad, address not mapped [LilyDemo]
+2026-08-01T22:08:55+0700 info     com.lily.app [LilyDemo] Compiling Lily with 47 files: target=Lily
+2026-08-01T22:08:55+0700 error    com.lily.app [LilyDemo] No such module 'MissingDependency': module=MissingDependency
+2026-08-01T22:08:55+0700 critical com.lily.app [LilyDemo] Segfault at 0x7ffeebad, address not mapped
 ```
+<details>
+<summary>Source</summary>
+
+```swift
+let logger = Logger(label: "com.lily.app")
+
+logger.info("Compiling Lily with 47 files", metadata: ["target": "Lily"])
+logger.error("No such module 'MissingDependency'", metadata: ["module": "MissingDependency"])
+logger.critical("Segfault at 0x7ffeebad, address not mapped")
+```
+</details>
 
 [`LogFormatter.standard`](https://github.com/staciax/lily/blob/main/Sources/Lily/Formatting/LogFormatter.swift#L288-L299) produces output that matches [swift-log](https://github.com/apple/swift-log)'s `StreamLogHandler` default format.
 
