@@ -296,7 +296,7 @@ extension LogFormatter {
         ":",
         .when({ $0.event.metadata?.isEmpty == false }, then: [" ", .metadata]),
         " ",
-        .group(["[", .source, "]"]),
+        "[", .source, "]",
         " ",
         .message,
     ])
