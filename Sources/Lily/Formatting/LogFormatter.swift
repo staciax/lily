@@ -294,7 +294,7 @@ extension LogFormatter {
         .level,
         .when({ !$0.label.isEmpty }, then: [" ", .label]),
         ":",
-        .when({ $0.event.metadata?.isEmpty == false }, then: [" ", .metadata]),
+        .when({ $0.event.metadata?.isEmpty != true }, then: [" ", .metadata]),
         " ",
         .group(["[", .source, "]"]),
         " ",
