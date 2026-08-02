@@ -220,7 +220,8 @@ public struct LogFormatter: LogFormatting {
         case .group(let components):
             var wroteAny = false
             for component in components {
-                wroteAny = try format(component, into: &output, context: context) || wroteAny
+                let wrote = try format(component, into: &output, context: context)
+                wroteAny = wroteAny || wrote
             }
             return wroteAny
 
