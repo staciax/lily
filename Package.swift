@@ -29,7 +29,7 @@ let package = Package(
 if Context.environment["ENABLE_LILY_BENCHMARKS"] != nil {
     package.platforms = [.macOS(.v15), .iOS(.v18), .macCatalyst(.v18), .tvOS(.v18), .visionOS(.v2)]
     package.dependencies.append(
-        .package(url: "https://github.com/ordo-one/benchmark", from: "1.34.1")
+        .package(url: "https://github.com/ordo-one/benchmark", from: "1.36.2")
     )
     package.targets.append(
         .executableTarget(
