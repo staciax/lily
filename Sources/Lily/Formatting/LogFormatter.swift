@@ -228,13 +228,13 @@ public struct LogFormatter: LogFormatting {
         case .joined(let components, let separator):
             var needsSeparator = false
             for component in components {
-                let mark = output.endIndex
+                let rollbackIndex = output.endIndex
                 if needsSeparator { output += separator }
                 let wrote = try format(component, into: &output, context: context)
                 if wrote {
                     needsSeparator = true
                 } else {
-                    output.removeSubrange(mark...)
+                    output.removeSubrange(rollbackIndex...)
                 }
             }
             return needsSeparator
