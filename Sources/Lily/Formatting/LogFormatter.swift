@@ -96,31 +96,54 @@ public struct LogFormatter: LogFormatting {
         var output = ""
         output.reserveCapacity(Self.reservedCapacity)
         for component in components {
-            output += try format(component, context: context)
+            try format(component, into: &output, context: context)
         }
         return output
     }
 
-    private func format(_ component: LogComponent, context: LogFormattingContext) throws(LogFormattingError) -> String {
+    @discardableResult
+    private func format(
+        _ component: LogComponent,
+        into output: inout String,
+        context: LogFormattingContext
+    ) throws(LogFormattingError) -> Bool {
         switch component.storage {
         case .literal(let value):
-            return value
+            output += value
+            return !value.isEmpty
 
         case .timestamp(let formatter):
-            if let formatter { return formatter({ context.timestamp }, context) }
-            return context.timestamp
+            if let formatter {
+                output += formatter({ context.timestamp }, context)
+                return true
+            }
+            output += context.timestamp
+            return !context.timestamp.isEmpty
 
         case .level(let formatter):
-            if let formatter { return formatter({ context.event.level.rawValue }, context) }
-            return context.event.level.rawValue
+            if let formatter {
+                output += formatter({ context.event.level.rawValue }, context)
+                return true
+            }
+            output += context.event.level.rawValue
+            return true
 
         case .label(let formatter):
-            if let formatter { return formatter({ context.label }, context) }
-            return context.label
+            if let formatter {
+                output += formatter({ context.label }, context)
+                return true
+            }
+            output += context.label
+            return !context.label.isEmpty
 
         case .message(let formatter):
-            if let formatter { return formatter({ context.event.message.description }, context) }
-            return context.event.message.description
+            if let formatter {
+                output += formatter({ context.event.message.description }, context)
+                return true
+            }
+            let message = context.event.message.description
+            output += message
+            return !message.isEmpty
 
         case .metadata(let selection, let formatter):
             if let formatter {
@@ -130,7 +153,7 @@ public struct LogFormatter: LogFormatting {
                         throw LogFormattingError.missingMetadataValue(key: key)
                     }
                 }
-                return formatter(
+                output += formatter(
                     { [self] in
                         do {
                             return try metadataDescription(matching: selection, in: context)
@@ -144,61 +167,85 @@ public struct LogFormatter: LogFormatting {
                     context,
                     namedKeys(matching: selection)
                 )
+                return true
             }
-            return try metadataDescription(matching: selection, in: context)
+            let description = try metadataDescription(matching: selection, in: context)
+            output += description
+            return !description.isEmpty
 
         case .metadataKey(let key, let formatter):
             guard let value = context.event.metadata?[key] ?? self.defaults?[key] else {
                 throw LogFormattingError.missingMetadataValue(key: key)
             }
-            if let formatter { return formatter({ value.description }, context, key) }
-            return value.description
+            if let formatter {
+                output += formatter({ value.description }, context, key)
+                return true
+            }
+            let description = value.description
+            output += description
+            return !description.isEmpty
 
         case .source(let formatter):
-            if let formatter { return formatter({ context.event.source }, context) }
-            return context.event.source
+            if let formatter {
+                output += formatter({ context.event.source }, context)
+                return true
+            }
+            output += context.event.source
+            return !context.event.source.isEmpty
 
         case .file(let formatter):
-            if let formatter { return formatter({ context.event.file }, context) }
-            return context.event.file
+            if let formatter {
+                output += formatter({ context.event.file }, context)
+                return true
+            }
+            output += context.event.file
+            return !context.event.file.isEmpty
 
         case .function(let formatter):
-            if let formatter { return formatter({ context.event.function }, context) }
-            return context.event.function
+            if let formatter {
+                output += formatter({ context.event.function }, context)
+                return true
+            }
+            output += context.event.function
+            return !context.event.function.isEmpty
 
         case .line(let formatter):
-            if let formatter { return formatter({ String(context.event.line) }, context) }
-            return String(context.event.line)
+            if let formatter {
+                output += formatter({ String(context.event.line) }, context)
+                return true
+            }
+            output += String(context.event.line)
+            return true
 
         case .group(let components):
-            var output = ""
-            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
+            var wroteAny = false
             for component in components {
-                output += try format(component, context: context)
+                let wrote = try format(component, into: &output, context: context)
+                wroteAny = wroteAny || wrote
             }
-            return output
+            return wroteAny
 
         case .joined(let components, let separator):
-            var output = ""
-            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
             var needsSeparator = false
             for component in components {
-                let rendered = try format(component, context: context)
-                guard !rendered.isEmpty else { continue }
+                let rollbackIndex = output.endIndex
                 if needsSeparator { output += separator }
-                output += rendered
-                needsSeparator = true
+                let wrote = try format(component, into: &output, context: context)
+                if wrote {
+                    needsSeparator = true
+                } else {
+                    output.removeSubrange(rollbackIndex...)
+                }
             }
-            return output
+            return needsSeparator
 
         case .when(let predicate, let components):
-            guard predicate(context) else { return "" }
-            var output = ""
-            // TODO: Benchmark before deciding whether to add `reserveCapacity`.
+            guard predicate(context) else { return false }
+            var wroteAny = false
             for component in components {
-                output += try format(component, context: context)
+                wroteAny = try format(component, into: &output, context: context) || wroteAny
             }
-            return output
+            return wroteAny
         }
     }
 
