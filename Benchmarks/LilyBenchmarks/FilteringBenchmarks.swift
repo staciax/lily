@@ -73,12 +73,15 @@ private struct PrefixStrippingFilter: LogFiltering {
     let prefix: String
 
     func filter(_ event: LogEvent) -> LogEvent? {
-        guard var metadata = event.metadata else { return event }
-        let initialCount = metadata.count
-        metadata = metadata.filter { !$0.key.hasPrefix(prefix) }
-        guard metadata.count != initialCount else { return event }
+        guard let originalMetadata = event.metadata else { return event }
+        var filtered: Logger.Metadata?
+        for (key, _) in originalMetadata where key.hasPrefix(prefix) {
+            if filtered == nil { filtered = originalMetadata }
+            filtered?.removeValue(forKey: key)
+        }
+        guard let filtered else { return event }
         var sanitized = event
-        sanitized.metadata = metadata
+        sanitized.metadata = filtered
         return sanitized
     }
 }
