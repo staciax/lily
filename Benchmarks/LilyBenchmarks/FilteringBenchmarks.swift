@@ -56,10 +56,10 @@ private struct TruncatingFilter: LogFiltering {
         guard var metadata = event.metadata else { return event }
         var didTruncate = false
         for (key, value) in metadata {
-            if case .string(let str) = value, str.count > maxCharacters {
-                metadata[key] = .string(String(str.prefix(maxCharacters)) + "...")
-                didTruncate = true
-            }
+            guard case .string(let str) = value else { continue }
+            guard str.utf8.count > maxCharacters, str.count > maxCharacters else { continue }
+            metadata[key] = .string(String(str.prefix(maxCharacters)) + "...")
+            didTruncate = true
         }
         guard didTruncate else { return event }
         var truncated = event
