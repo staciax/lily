@@ -84,7 +84,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? LogFormatter.standard.format(context))
+            blackHole(try! LogFormatter.standard.format(context))
         }
     }
 
@@ -93,7 +93,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? LogFormatter.standard.format(context))
+            blackHole(try! LogFormatter.standard.format(context))
         }
     }
 
@@ -102,7 +102,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? consoleFormatter.format(context))
+            blackHole(try! consoleFormatter.format(context))
         }
     }
 
@@ -111,7 +111,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? defaultsFormatter.format(context))
+            blackHole(try! defaultsFormatter.format(context))
         }
     }
 
@@ -120,7 +120,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? defaultsFormatter.format(context))
+            blackHole(try! defaultsFormatter.format(context))
         }
     }
 
@@ -129,7 +129,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? defaultsFormatter.format(context))
+            blackHole(try! defaultsFormatter.format(context))
         }
     }
 
@@ -138,7 +138,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? defaultsFormatter.format(context))
+            blackHole(try! defaultsFormatter.format(context))
         }
     }
 
@@ -147,7 +147,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? defaultsFormatter.format(context))
+            blackHole(try! defaultsFormatter.format(context))
         }
     }
 
@@ -156,7 +156,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? excludingFormatter.format(context))
+            blackHole(try! excludingFormatter.format(context))
         }
     }
 
@@ -166,7 +166,7 @@ func formattingBenchmarks() {
         benchmark.startMeasurement()
 
         for _ in benchmark.scaledIterations {
-            blackHole(try? excludingFormatter.format(context))
+            blackHole(try! excludingFormatter.format(context))
         }
     }
 }
